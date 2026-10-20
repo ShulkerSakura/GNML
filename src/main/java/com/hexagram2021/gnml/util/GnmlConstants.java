@@ -12,14 +12,20 @@ public final class GnmlConstants {
 	/** HMCL 官方发布页喵~ */
 	public static final String HMCL_RELEASES_URL = "https://github.com/HMCL-dev/HMCL/releases";
 
-	/** 需要改造的目标类内部名喵~ */
+	/** 需要改造的目标类内部名（LocaleUtils）喵~ */
 	public static final String TARGET_LOCALE_UTILS_INTERNAL_NAME = "org/jackhuang/hmcl/util/i18n/LocaleUtils";
 
-	/** 需要改造的目标方法名喵~ */
+	/** 需要改造的目标方法名（LocaleUtils#isChinaMainland）喵~ */
 	public static final String TARGET_IS_CHINA_MAINLAND_METHOD = "isChinaMainland";
 
-	/** 需要改造的目标方法描述符（无参、返回 boolean）喵~ */
-	public static final String TARGET_IS_CHINA_MAINLAND_DESC = "()Z";
+	/** 需要改造的目标类内部名（RegionUtils，HMCL 较新版本引入）喵~ */
+	public static final String TARGET_REGION_UTILS_INTERNAL_NAME = "org/jackhuang/hmcl/util/RegionUtils";
+
+	/** 需要改造的目标方法名（RegionUtils#checkMachineIsChinaMainland）喵~ */
+	public static final String TARGET_CHECK_MACHINE_IS_CHINA_MAINLAND_METHOD = "checkMachineIsChinaMainland";
+
+	/** 两个目标方法的描述符一致：无参、返回 boolean 喵~ */
+	public static final String TARGET_METHOD_DESC = "()Z";
 
 	/** 退出码：成功喵~ */
 	public static final int EXIT_CODE_SUCCESS = 0;

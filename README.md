@@ -1,6 +1,6 @@
 # Good Night Minecraft Launcher
 
-Good Night Minecraft Launcher（简称 GNML）是一个基于 JavaAgent + ASM 技术的 HMCL 启动器引导工具。它并不修改 HMCL 本体，而是在 HMCL 运行时将其 `LocaleUtils.IS_CHINA_MAINLAND` 强制判定为 `false`，使 HMCL 不再走"中国大陆特判"逻辑，从而要求玩家先完成正版（Microsoft）登录，之后才能使用离线登录功能，帮助玩家遵守 Minecraft EULA。
+Good Night Minecraft Launcher（简称 GNML）是一个基于 JavaAgent + ASM 技术的 HMCL 启动器引导工具。它并不修改 HMCL 本体，而是在 HMCL 运行时将其 `LocaleUtils.IS_CHINA_MAINLAND` 与 `RegionUtils`（较新版本 HMCL）的机器区域判定强制为 `false`，使 HMCL 不再走"中国大陆特判"逻辑，从而要求玩家先完成正版（Microsoft）登录，之后才能使用离线登录功能，帮助玩家遵守 Minecraft EULA。
 
 ## 功能定位
 
@@ -11,7 +11,7 @@ Good Night Minecraft Launcher（简称 GNML）是一个基于 JavaAgent + ASM �
 ## 工作原理
 
 1. **主程序（Main）**：扫描当前工作目录与 GNML 所在目录下的 `*.jar` / `*.exe` 文件，通过读取 zip 内 `META-INF/MANIFEST.MF` 的 `Main-Class` 是否为 `org.jackhuang.hmcl.Main` 来识别 HMCL 启动器；随后以 `java -javaagent:<GNML.jar> -jar <HMCL文件>` 的方式拉起 HMCL，并等待其退出、透传退出码。
-2. **Agent（Premain）**：GNML 以 JavaAgent 形式挂载进 HMCL 的 JVM，使用 ASM 在 `org.jackhuang.hmcl.util.i18n.LocaleUtils#isChinaMainland()` 方法入口注入"直接返回 false"，使 HMCL 认为当前环境不在中国大陆。
+2. **Agent（Premain）**：GNML 以 JavaAgent 形式挂载进 HMCL 的 JVM，使用 ASM 将 `org.jackhuang.hmcl.util.i18n.LocaleUtils#isChinaMainland()` 与 `org.jackhuang.hmcl.util.RegionUtils#checkMachineIsChinaMainland()`（HMCL 较新版本引入）的方法体整体替换为直接返回 `false`，使 HMCL 认为当前环境不在中国大陆。
 
 GNML 对 HMCL jar 文件本身不做任何写入，HMCL 的数字签名不受影响。
 

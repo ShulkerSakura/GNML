@@ -5,6 +5,9 @@ import javax.annotation.Nullable;
 import java.lang.instrument.ClassFileTransformer;
 import java.lang.instrument.IllegalClassFormatException;
 import java.security.ProtectionDomain;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.objectweb.asm.AnnotationVisitor;
 import org.objectweb.asm.ClassReader;
@@ -20,10 +23,15 @@ import com.hexagram2021.gnml.util.GnmlConstants;
 import com.hexagram2021.gnml.util.GnmlLog;
 
 /**
- * 将 {@code org.jackhuang.hmcl.util.i18n.LocaleUtils#isChinaMainland()} 的方法体整体替换为 {@code return false} 的转换器喵~
+ * 将 HMCL 的中国大陆判定方法整体替换为 {@code return false} 的转换器喵~
  * <br/>
- * 原理：{@code IS_CHINA_MAINLAND} 是由 {@code <clinit>} 调用该方法赋值的非编译期常量，
- * 方法恒返回 false 后，HMCL 任何位置读取该字段都会拿到 false 喵~
+ * 当前目标（均为 {@code private static}、描述符 {@code ()Z}）：
+ * <ul>
+ *     <li>{@code org.jackhuang.hmcl.util.i18n.LocaleUtils#isChinaMainland()}</li>
+ *     <li>{@code org.jackhuang.hmcl.util.RegionUtils#checkMachineIsChinaMainland()}（HMCL 较新版本引入）</li>
+ * </ul>
+ * 原理：这些方法的返回值被赋给非编译期静态常量（如 {@code IS_CHINA_MAINLAND}），
+ * 方法恒返回 false 后，HMCL 任何位置读取这些字段都会拿到 false 喵~
  * <br/>
  * 失败策略（DR-D8）：命中目标类但未命中目标方法时抛出异常，让 JVM 中止该类的加载，
  * 从而阻止未经改造的 HMCL 被放行喵~
@@ -33,8 +41,20 @@ import com.hexagram2021.gnml.util.GnmlLog;
 public final class IsChinaMainlandTransformer implements ClassFileTransformer {
 	private static final int MAX_REPORTED_METHODS = 30;
 
+	/** 目标类内部名 -> 目标方法名（描述符统一为 ()Z）喵~ */
+	private static final Map<String, String> TARGET_METHODS = buildTargetMethods();
+
+	private static Map<String, String> buildTargetMethods() {
+		Map<String, String> targets = new HashMap<>();
+		targets.put(GnmlConstants.TARGET_LOCALE_UTILS_INTERNAL_NAME,
+				GnmlConstants.TARGET_IS_CHINA_MAINLAND_METHOD);
+		targets.put(GnmlConstants.TARGET_REGION_UTILS_INTERNAL_NAME,
+				GnmlConstants.TARGET_CHECK_MACHINE_IS_CHINA_MAINLAND_METHOD);
+		return Collections.unmodifiableMap(targets);
+	}
+
 	/**
-	 * 转换类文件喵~。仅当类名精确匹配 HMCL 的 LocaleUtils 时才会产生变更
+	 * 转换类文件喵~。仅当类名精确匹配目标表中的 HMCL 类时才会产生变更
 	 *
 	 * @param loader             定义该类的类加载器
 	 * @param className          目标类内部名（以 {@code /} 分隔）
@@ -49,23 +69,27 @@ public final class IsChinaMainlandTransformer implements ClassFileTransformer {
 	public byte[] transform(ClassLoader loader, String className, Class<?> classBeingRedefined,
 							ProtectionDomain protectionDomain, byte[] classFileBuffer)
 			throws IllegalClassFormatException {
-		if (className == null || !GnmlConstants.TARGET_LOCALE_UTILS_INTERNAL_NAME.equals(className)) {
+		if (className == null) {
 			return null;
 		}
-		GnmlLog.info("命中目标类 " + className + "，开始注入 isChinaMainland -> false");
+		String targetMethod = TARGET_METHODS.get(className);
+		if (targetMethod == null) {
+			return null;
+		}
+		String targetMethodId = targetMethod + GnmlConstants.TARGET_METHOD_DESC;
+		GnmlLog.info("命中目标类 " + className + "，开始强制 " + targetMethodId + " -> false");
 		try {
 			ClassReader reader = new ClassReader(classFileBuffer);
 			// 拷贝式写入：未命中的方法原样保留，目标方法整体替换为极简方法体
 			ClassWriter writer = new ClassWriter(reader, 0);
-			MethodCollector collector = new MethodCollector();
+			MethodCollector collector = new MethodCollector(targetMethodId);
 			reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
 				@Override
 				public MethodVisitor visitMethod(int access, String name, String descriptor,
 												 String signature, String[] exceptions) {
 					collector.record(name + descriptor);
 					MethodVisitor delegate = super.visitMethod(access, name, descriptor, signature, exceptions);
-					if (GnmlConstants.TARGET_IS_CHINA_MAINLAND_METHOD.equals(name)
-							&& GnmlConstants.TARGET_IS_CHINA_MAINLAND_DESC.equals(descriptor)) {
+					if (targetMethod.equals(name) && GnmlConstants.TARGET_METHOD_DESC.equals(descriptor)) {
 						return new AlwaysFalseMethodVisitor(delegate, name + descriptor);
 					}
 					return delegate;
@@ -73,7 +97,7 @@ public final class IsChinaMainlandTransformer implements ClassFileTransformer {
 			}, 0);
 			if (!collector.foundTarget) {
 				throw new IllegalClassFormatException("目标方法缺失，当前 HMCL 版本不兼容: "
-						+ className.replace('/', '.') + "#" + GnmlConstants.TARGET_IS_CHINA_MAINLAND_METHOD
+						+ className.replace('/', '.') + "#" + targetMethod
 						+ "，实际方法: " + collector.summarize());
 			}
 			return writer.toByteArray();
@@ -88,13 +112,17 @@ public final class IsChinaMainlandTransformer implements ClassFileTransformer {
 	 * 记录被访问到的方法，并标记是否命中目标方法喵~
 	 */
 	private static final class MethodCollector {
+		private final String targetMethodId;
 		private final StringBuilder visited = new StringBuilder();
 		private boolean foundTarget;
 		private int reported;
 
+		MethodCollector(String targetMethodId) {
+			this.targetMethodId = targetMethodId;
+		}
+
 		void record(String methodSignature) {
-			if ((GnmlConstants.TARGET_IS_CHINA_MAINLAND_METHOD + GnmlConstants.TARGET_IS_CHINA_MAINLAND_DESC)
-					.equals(methodSignature)) {
+			if (targetMethodId.equals(methodSignature)) {
 				foundTarget = true;
 			}
 			if (reported < MAX_REPORTED_METHODS) {

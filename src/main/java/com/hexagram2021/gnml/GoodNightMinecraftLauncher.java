@@ -90,7 +90,7 @@ public final class GoodNightMinecraftLauncher {
 	public static void premain(String agentArgs, Instrumentation inst) {
 		// 不启用 retransform：premain 先于目标类加载，无需对已加载类做二次转换
 		inst.addTransformer(new IsChinaMainlandTransformer());
-		GnmlLog.info("GNML agent 已挂载：LocaleUtils#isChinaMainland 将被强制返回 false");
+		GnmlLog.info("GNML agent 已挂载：HMCL 的中国大陆判定（LocaleUtils / RegionUtils）将被强制返回 false");
 	}
 
 	/**

@@ -204,17 +204,18 @@ System.exit(exitCode);
 
 ### 4.7 IsChinaMainlandTransformer
 
-目标（基于 HMCL 3.16.4 实测，见附录 A）：
+目标（基于 HMCL 3.16.4 实测，见附录 A；均为 `private static`、描述符 `()Z`，由需求方在实现阶段追加）：
 
-| 项 | 值 |
-| --- | --- |
-| 目标类 | `org/jackhuang/hmcl/util/i18n/LocaleUtils` |
-| 目标方法 | `isChinaMainland`，描述符 `()Z`，`private static` |
-| 调用点 | `<clinit>` 中 `putstatic IS_CHINA_MAINLAND` 之前 |
-| 改写方式 | 整体替换方法体为 `ICONST_0; IRETURN`（maxStack=1，maxLocals=0） |
+| 目标类 | 目标方法 | 说明 |
+| --- | --- | --- |
+| `org/jackhuang/hmcl/util/i18n/LocaleUtils` | `isChinaMainland` | 赋值给 `IS_CHINA_MAINLAND`（`<clinit>` 中 `putstatic` 之前） |
+| `org/jackhuang/hmcl/util/RegionUtils` | `checkMachineIsChinaMainland` | 赋值给 `IS_CHINA_MAINLAND_MACHINE`；HMCL 较新版本引入，3.16.4 中不存在该类（此时为无害 no-op）。其下游 `checkChinaMainlandNetwork` 依赖该结果，改造后网络区域判定一并归 false |
+
+改写方式：整体替换方法体为 `ICONST_0; IRETURN`（maxStack=1，maxLocals=0）。
 
 设计要点：
 
+- 转换器内部维护"目标类内部名 → 目标方法名"的只读目标表（`TARGET_METHODS`），命中表中类名后按统一描述符 `()Z` 匹配方法，便于后续追加目标；
 - 采用 `ClassReader` + `ClassWriter(reader, 0)` 的拷贝式写入，未命中的方法原样保留，不使用 `COMPUTE_MAXS | COMPUTE_FRAMES`；
 - **不能**仅在方法入口插入 `ICONST_0; IRETURN` 保留原始代码：HotSpot 栈图验证器要求无条件跳转之后的指令必须有 StackMapTable 帧，残留死代码会触发 `VerifyError`（实现阶段实测，见附录 C）。因此由 `AlwaysFalseMethodVisitor` 丢弃全部原始指令、标签、栈图、异常表与行号，只写出两字节的新方法体，产物为无分支的极简字节码，不需要任何帧；
 - 由于 `IS_CHINA_MAINLAND` 是非编译期常量（由 `<clinit>` 调用方法赋值），HMCL 任何位置对它的读取都会触发 `<clinit>` 并拿到改造后的 `false`；
@@ -352,7 +353,8 @@ jar {
 - Manifest：`Main-Class: org.jackhuang.hmcl.Main`，`Implementation-Version: 3.16.4`，`Multi-Release: true`，含 `META-INF/hmcl_signature`（签名 jar）；
 - 类与方法：`org/jackhuang/hmcl/util/i18n/LocaleUtils.class` 存在；`private static boolean isChinaMainland();` 存在；`<clinit>` 中 `invokestatic isChinaMainland()Z` 后 `putstatic IS_CHINA_MAINLAND:Z`；
 - 字节码版本：`org/jackhuang/hmcl/Main.class` major version 52（Java 8）；
-- 依赖：jar 内不含 `org/objectweb/asm/*`，agent 必须自带 ASM。
+- 依赖：jar 内不含 `org/objectweb/asm/*`，agent 必须自带 ASM；
+- `org/jackhuang/hmcl/util/RegionUtils.class` 在 3.16.4 中**不存在**（该类为 HMCL 较新版本引入，需求方提供了 `references/RegionUtils.java` 快照）；对 3.16.4 而言 RegionUtils 目标为无害 no-op，实测 agent 挂载与启动均正常。
 
 ## 附录 B：参考实现
 
@@ -372,8 +374,8 @@ jar {
 
 验证记录（2026-10-20，Windows 11，Liberica JDK 17）：
 
-- 单元测试：20/20 通过（`gradlew build` 全绿）；
-- E2E-A/B（真实 HMCL-3.16.4.jar + 反射探针）：不带 agent `IS_CHINA_MAINLAND=true`；带 agent `=false`，stderr 出现 `[GNML] 已将方法体替换为 return false: isChinaMainland()Z`；
+- 单元测试：21/21 通过（`gradlew build` 全绿），含 `RegionUtilsFixture` 的方法体替换验证；
+- E2E-A/B（真实 HMCL-3.16.4.jar + 反射探针）：不带 agent `IS_CHINA_MAINLAND=true`；带 agent `=false`，stderr 出现 `[GNML] 已将方法体替换为 return false: isChinaMainland()Z`；`RegionUtils=absent`（3.16.4 无此类，agent 正常挂载不受影响）；
 - E2E-C（空目录 + headless）：stderr 输出扫描目录与下载地址，退出码 2；
 - E2E-D（伪造 HMCL jar 全链路）：发现（版本 9.9.9）→ java 解析（CURRENT_JVM）→ 子进程挂 agent → `FAKE_HMCL_STARTED` → 退出码 0 透传；
 - E2E-GUI（用户实测）：未找到 HMCL 时浏览器正确打开 Releases 页面（弹窗置顶修正后待用户复核）；
