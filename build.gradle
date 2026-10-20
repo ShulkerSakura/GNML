@@ -1,0 +1,63 @@
+plugins {
+	id 'java'
+}
+
+group = 'com.hexagram2021.gnml'
+version = '0.1.0'
+
+java.disableAutoTargetJvm()
+
+compileJava {
+	sourceCompatibility = 8
+	targetCompatibility = 8
+}
+
+compileTestJava {
+	sourceCompatibility = 17
+	targetCompatibility = 17
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	compileOnly 'com.google.code.findbugs:jsr305:3.0.2'
+	implementation 'org.ow2.asm:asm:9.7'
+
+	testImplementation platform('org.junit:junit-bom:5.10.2')
+	testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+jar {
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+	manifest {
+		attributes([
+			'Main-Class'              : 'com.hexagram2021.gnml.GoodNightMinecraftLauncher',
+			'Premain-Class'           : 'com.hexagram2021.gnml.GoodNightMinecraftLauncher',
+			'Implementation-Title'    : 'Good Night Minecraft Launcher',
+			'Implementation-Version'  : project.version,
+			'Implementation-Vendor'   : 'liudongyu',
+			'Specification-Title'     : 'Good Night Minecraft Launcher',
+			'Specification-Vendor'    : 'liudongyu'
+		])
+	}
+
+	// Shade ASM：HMCL jar 内不含 org.objectweb.asm，agent jar 是运行时唯一类来源
+	from({ configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }) {
+		exclude 'META-INF/**'
+		exclude 'module-info.class'
+	}
+
+	// 许可证与第三方声明打入 jar 根
+	from('LICENSE')
+}
+
+test {
+	useJUnitPlatform()
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = 'UTF-8'
+}
